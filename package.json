@@ -1,0 +1,56 @@
+{
+  "name": "pi-subscription-usage",
+  "version": "0.1.0",
+  "description": "Provider-reported subscription usage for Claude, Codex, GitHub Copilot, and Kiro in pi",
+  "type": "module",
+  "license": "MIT",
+  "author": "Zheng Zhicheng <zhicheng.ink98@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhengfran/pi-subscription-usage.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhengfran/pi-subscription-usage/issues"
+  },
+  "homepage": "https://github.com/zhengfran/pi-subscription-usage#readme",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "subscription",
+    "usage",
+    "quota"
+  ],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE",
+    "CONTEXT.md",
+    "docs"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.82.0",
+    "@earendil-works/pi-tui": ">=0.82.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.82.0",
+    "@earendil-works/pi-tui": "^0.82.0",
+    "@types/node": "^26.1.1",
+    "prettier": "^3.9.5",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.json\"",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "test:live": "PI_SUBSCRIPTION_USAGE_LIVE=1 node --test --experimental-strip-types test/live.test.ts"
+  }
+}

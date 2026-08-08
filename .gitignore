@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment variables and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Package cache written at runtime (never committed)
+snapshots.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# Local editor settings
+.vscode/
+.idea/

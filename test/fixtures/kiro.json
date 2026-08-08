@@ -1,0 +1,26 @@
+{
+  "usageBreakdownList": [
+    {
+      "currency": "USD",
+      "currentUsage": 12.5,
+      "displayName": "Credits",
+      "nextDateReset": 1785542400,
+      "resourceType": "CREDIT",
+      "unit": "credits",
+      "usageLimit": 50,
+      "freeTrialInfo": {
+        "currentUsage": 1,
+        "freeTrialExpiry": 1786147200,
+        "freeTrialStatus": "ACTIVE",
+        "usageLimit": 10
+      }
+    }
+  ],
+  "subscriptionInfo": {
+    "subscriptionTitle": "Kiro Pro",
+    "type": "PRO"
+  },
+  "overageConfiguration": {
+    "overageEnabled": false
+  }
+}

@@ -89,9 +89,18 @@ export interface AdapterDiagnostic {
   detail?: string;
 }
 
+export interface UsageAdapterOptions {
+  /** User-confirmed monthly allowance when the provider reports usage but omits its limit. */
+  aiCreditsLimit?: number;
+}
+
 export interface UsageAdapter {
   readonly id: ProviderId;
   readonly label: string;
-  fetch(runtime: Runtime, signal: AbortSignal): Promise<UsageSnapshot>;
+  fetch(
+    runtime: Runtime,
+    signal: AbortSignal,
+    options?: UsageAdapterOptions,
+  ): Promise<UsageSnapshot>;
   diagnose(runtime: Runtime): Promise<AdapterDiagnostic>;
 }

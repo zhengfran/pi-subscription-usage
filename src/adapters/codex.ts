@@ -40,14 +40,26 @@ function identityForWindow(
   fallbackId: string,
   fallbackLabel: string,
   fallbackKind: WindowKind,
+  scoped: boolean,
 ) {
-  if (seconds !== undefined && Math.abs(seconds - 18_000) < 120) {
-    return { id: "five_hour", label: "5-hour", kind: "five_hour" as const };
-  }
-  if (seconds !== undefined && Math.abs(seconds - 604_800) < 600) {
-    return { id: "seven_day", label: "weekly", kind: "weekly" as const };
-  }
-  return { id: fallbackId, label: fallbackLabel, kind: fallbackKind };
+  const duration =
+    seconds !== undefined && Math.abs(seconds - 18_000) < 120
+      ? { id: "five_hour", label: "5-hour", kind: "five_hour" as const }
+      : seconds !== undefined && Math.abs(seconds - 604_800) < 600
+        ? { id: "seven_day", label: "weekly", kind: "weekly" as const }
+        : undefined;
+  if (!duration)
+    return { id: fallbackId, label: fallbackLabel, kind: fallbackKind };
+  if (!scoped) return duration;
+
+  const scope = fallbackLabel
+    .replace(/\s*(?:primary|secondary) window$/i, "")
+    .trim();
+  return {
+    id: `${fallbackId}_${duration.id}`,
+    label: `${scope} ${duration.label}`.trim(),
+    kind: fallbackKind,
+  };
 }
 
 function normalizeWindow(
@@ -55,6 +67,7 @@ function normalizeWindow(
   fallbackId: string,
   fallbackLabel: string,
   fallbackKind: WindowKind,
+  scoped: boolean,
 ): AllowanceWindow | undefined {
   const record = asRecord(value);
   const usedPercent = finiteNumber(record?.used_percent ?? record?.usedPercent);
@@ -70,6 +83,7 @@ function normalizeWindow(
     fallbackId,
     fallbackLabel,
     fallbackKind,
+    scoped,
   );
   const resetAfter = finiteNumber(record.reset_after_seconds);
   return {
@@ -92,18 +106,21 @@ function pairFromContainer(
 ): AllowanceWindow[] {
   const container = asRecord(value);
   if (!container) return [];
+  const scoped = prefix.length > 0 || labelPrefix.length > 0;
   return [
     normalizeWindow(
       container.primary_window ?? container.primary,
       `${prefix}primary`,
       `${labelPrefix}primary window`.trim(),
       kind,
+      scoped,
     ),
     normalizeWindow(
       container.secondary_window ?? container.secondary,
       `${prefix}secondary`,
       `${labelPrefix}secondary window`.trim(),
       kind,
+      scoped,
     ),
   ].filter((window): window is AllowanceWindow => window !== undefined);
 }
@@ -229,7 +246,7 @@ async function fetchViaAppServer(
   return new Promise((resolve, reject) => {
     const child = spawn(
       executable,
-      ["-s", "read-only", "-a", "untrusted", "app-server"],
+      ["-s", "read-only", "-a", "never", "app-server"],
       {
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, NO_COLOR: "1", TERM: "dumb" },

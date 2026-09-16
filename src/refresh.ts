@@ -5,7 +5,7 @@ import {
   waitForPeerRefresh,
   writeCache,
 } from "./cache.ts";
-import type { LoadedConfig, UsageConfig } from "./config.ts";
+import type { LoadedConfig, ProviderConfig, UsageConfig } from "./config.ts";
 import { AdapterFailure } from "./adapters/shared.ts";
 import type {
   AdapterDiagnostic,
@@ -92,12 +92,13 @@ function safeFailure(error: unknown): AdapterFailure {
 async function runAdapter(
   adapter: UsageAdapter,
   runtime: Runtime,
+  options: ProviderConfig,
 ): Promise<UsageSnapshot> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), ADAPTER_TIMEOUT_MS);
     try {
-      return await adapter.fetch(runtime, controller.signal);
+      return await adapter.fetch(runtime, controller.signal, options);
     } catch (error) {
       const failure = controller.signal.aborted
         ? new AdapterFailure(
@@ -246,7 +247,11 @@ export class UsageCoordinator {
             };
           }
           try {
-            const snapshot = await runAdapter(adapter, this.runtime);
+            const snapshot = await runAdapter(
+              adapter,
+              this.runtime,
+              this.config.providers[adapter.id],
+            );
             this.snapshots[adapter.id] = snapshot;
             return {
               provider: adapter.id,

@@ -14,6 +14,7 @@ import type {
   Runtime,
   SupplementalBalance,
   UsageAdapter,
+  UsageAdapterOptions,
   UsageSnapshot,
 } from "../types.ts";
 import {
@@ -257,9 +258,54 @@ function snapshotWindow(
   };
 }
 
+function aiCreditsWindow(
+  value: unknown,
+  fallbackReset: unknown,
+  configuredLimit: number | undefined,
+): AllowanceWindow | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const entitlement = finiteNumber(record.entitlement ?? record.quota);
+  const reportedRemaining = finiteNumber(
+    record.quota_remaining ?? record.remaining,
+  );
+  const creditsUsed = finiteNumber(record.credits_used);
+  const derivedUsed =
+    entitlement !== undefined &&
+    entitlement > 0 &&
+    reportedRemaining !== undefined
+      ? Math.max(0, entitlement - reportedRemaining)
+      : undefined;
+  const used = creditsUsed ?? derivedUsed;
+  const limit =
+    entitlement !== undefined && entitlement > 0
+      ? entitlement
+      : configuredLimit;
+  if (used === undefined && limit === undefined) return undefined;
+  const normalizedUsed = used ?? 0;
+  const remaining =
+    limit === undefined ? undefined : Math.max(0, limit - normalizedUsed);
+  return {
+    id: "ai_credits",
+    label: "AI credits",
+    kind: "monthly",
+    usedPercent:
+      limit === undefined
+        ? undefined
+        : clampPercent((normalizedUsed / limit) * 100),
+    used: normalizedUsed,
+    limit,
+    remaining,
+    unit: "AI credits",
+    resetsAt: isoDate(record.quota_reset_at) ?? isoDate(fallbackReset),
+    ...(limit === undefined ? {} : { unlimited: false }),
+  };
+}
+
 export function normalizeCopilotUsage(
   value: unknown,
   observedAt = new Date().toISOString(),
+  configuredAiCreditsLimit?: number,
 ): UsageSnapshot {
   const root = asRecord(value);
   const snapshots = asRecord(root?.quota_snapshots);
@@ -269,6 +315,31 @@ export function normalizeCopilotUsage(
       "GitHub Copilot usage response changed format",
     );
   }
+  const premiumInteractions = asRecord(snapshots.premium_interactions);
+  const tokenBasedBilling =
+    root.token_based_billing === true ||
+    premiumInteractions?.token_based_billing === true;
+  if (tokenBasedBilling) {
+    const window = aiCreditsWindow(
+      premiumInteractions,
+      root.quota_reset_date_utc ?? root.quota_reset_date,
+      configuredAiCreditsLimit,
+    );
+    if (!window) {
+      throw new AdapterFailure(
+        "unsupported",
+        "GitHub Copilot response contained no AI-credit usage",
+      );
+    }
+    return {
+      provider: "copilot",
+      label: "GitHub Copilot",
+      observedAt,
+      plan: planName(root.copilot_plan ?? root.access_type_sku ?? root.sku),
+      windows: [window],
+    };
+  }
+
   const normalized = Object.entries(snapshots).map(([id, snapshot]) =>
     snapshotWindow(
       id,
@@ -307,7 +378,11 @@ export const copilotAdapter: UsageAdapter = {
   id: "copilot",
   label: "GitHub Copilot",
 
-  async fetch(runtime: Runtime, signal: AbortSignal): Promise<UsageSnapshot> {
+  async fetch(
+    runtime: Runtime,
+    signal: AbortSignal,
+    options?: UsageAdapterOptions,
+  ): Promise<UsageSnapshot> {
     const copilotPath = await runtime.resolveCommand("copilot");
     const ghPath = await runtime.resolveCommand("gh");
     if (!copilotPath && !ghPath) {
@@ -331,7 +406,11 @@ export const copilotAdapter: UsageAdapter = {
       signal,
     );
     rejectHttpFailure(response, "GitHub Copilot");
-    return normalizeCopilotUsage(response.data);
+    return normalizeCopilotUsage(
+      response.data,
+      new Date().toISOString(),
+      options?.aiCreditsLimit,
+    );
   },
 
   async diagnose(runtime: Runtime): Promise<AdapterDiagnostic> {

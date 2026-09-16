@@ -30,9 +30,14 @@ const snapshot: UsageSnapshot = {
 test("validates refresh interval and provider settings", () => {
   const { config, errors } = parseConfig({
     refreshIntervalMinutes: 10,
-    providers: { kiro: { enabled: false }, mystery: {} },
+    providers: {
+      copilot: { enabled: true, aiCreditsLimit: 20_000 },
+      kiro: { enabled: false },
+      mystery: {},
+    },
   });
   assert.equal(config.refreshIntervalMinutes, 10);
+  assert.equal(config.providers.copilot.aiCreditsLimit, 20_000);
   assert.equal(config.providers.kiro.enabled, false);
   assert.ok(errors.some((error) => error.includes("mystery")));
 });

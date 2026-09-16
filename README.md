@@ -3,11 +3,11 @@
 A pi package that displays provider-reported, account-wide subscription usage for:
 
 - Claude: 5-hour, weekly, and provider-reported model windows
-- Codex: 5-hour, weekly, additional rate limits, and credits
-- GitHub Copilot: monthly quota snapshots, including premium requests
+- Codex: base windows, model-scoped additional limits, and credits
+- GitHub Copilot: monthly AI-credit usage and legacy request quotas
 - Kiro: monthly credits and bonus/overage balances
 
-It does not estimate subscription usage from local tokens or sessions. Provider units are preserved and never combined into a cross-provider score.
+It does not estimate subscription usage from local tokens or sessions. Provider units are preserved and never combined into a cross-provider score. When an organization-managed Copilot response reports used AI credits but omits the included allowance, an optional user-confirmed limit can complete that one display; it is never inferred.
 
 ## Install
 
@@ -69,6 +69,18 @@ The cache contains normalized usage only, uses owner-only permissions, and retai
 
 Each adapter has a 10-second attempt timeout and one retry for transient network or server failures. Authentication, rate-limit, and response-schema failures are not retried.
 
+## Provider-specific behavior
+
+### Codex
+
+Codex base limits and model-specific additional limits remain distinct. For example, a Pro account may report one base weekly allowance plus separate `GPT-5.3-Codex-Spark 5-hour` and `GPT-5.3-Codex-Spark weekly` windows. Duration recognition never strips the model scope from an additional limit.
+
+### GitHub Copilot
+
+When GitHub reports `token_based_billing`, the legacy-named `premium_interactions` snapshot is displayed as one **AI credits** window. Its provider-reported `credits_used` value replaces the misleading unlimited `premium requests`, `chat`, and `completions` rows. If GitHub also reports a positive entitlement, that value is used automatically.
+
+Organization-managed accounts may report `credits_used` while returning a zero entitlement. Set `providers.copilot.aiCreditsLimit` to the monthly allowance shown in your GitHub account so the dashboard can display `used/limit`; without it, the dashboard shows provider-reported used credits only.
+
 ## Configuration
 
 Configuration is optional. Defaults are zero-config. To override them, create `<pi-agent-dir>/subscription-usage.json` (normally `~/.pi/agent/subscription-usage.json`):
@@ -79,22 +91,22 @@ Configuration is optional. Defaults are zero-config. To override them, create `<
   "providers": {
     "claude": { "enabled": true },
     "codex": { "enabled": true },
-    "copilot": { "enabled": true },
+    "copilot": { "enabled": true, "aiCreditsLimit": 20000 },
     "kiro": { "enabled": true }
   }
 }
 ```
 
-`refreshIntervalMinutes` must be from 1 through 1440. Unknown keys and invalid values are reported in `/usage` and `/usage doctor`; safe defaults remain active.
+`refreshIntervalMinutes` must be from 1 through 1440. `providers.copilot.aiCreditsLimit` must be greater than zero when set. It is an optional, user-confirmed monthly allowance—not a plan default or an estimate—and is used only when a token-billed Copilot response omits its included limit. Unknown keys and invalid values are reported in `/usage` and `/usage doctor`; safe defaults remain active.
 
 ## Provider credential sources
 
-| Provider | Preferred source | Fallback endpoint |
-|---|---|---|
-| Claude | Claude Code OAuth credential store | `api.anthropic.com/api/oauth/usage` |
-| Codex | Codex app-server `account/rateLimits/read` | ChatGPT Codex usage endpoint using Codex OAuth |
-| Copilot | Copilot CLI managed config, environment token, legacy `apps.json`, or `gh auth token` | GitHub Copilot internal user quota endpoint |
-| Kiro | Kiro CLI credential database; refresh delegated to Kiro CLI | Kiro management `Get-Usage-Limits` |
+| Provider | Preferred source                                                                      | Fallback endpoint                              |
+| -------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Claude   | Claude Code OAuth credential store                                                    | `api.anthropic.com/api/oauth/usage`            |
+| Codex    | Codex app-server `account/rateLimits/read`                                            | ChatGPT Codex usage endpoint using Codex OAuth |
+| Copilot  | Copilot CLI managed config, environment token, legacy `apps.json`, or `gh auth token` | GitHub Copilot internal user quota endpoint    |
+| Kiro     | Kiro CLI credential database; refresh delegated to Kiro CLI                           | Kiro management `Get-Usage-Limits`             |
 
 No package telemetry or crash reporting is sent.
 

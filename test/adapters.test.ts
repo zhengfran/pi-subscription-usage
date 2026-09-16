@@ -50,6 +50,70 @@ test("normalizes Codex app-server windows and credits", async () => {
   assert.equal(result.supplemental?.[0]?.remaining, 17.5);
 });
 
+test("keeps Codex Pro base and model-specific windows distinct", () => {
+  const result = normalizeCodexUsage(
+    {
+      plan_type: "prolite",
+      rate_limit: {
+        primary_window: {
+          used_percent: 99,
+          limit_window_seconds: 604_800,
+          reset_at: 1_789_805_445,
+        },
+      },
+      additional_rate_limits: [
+        {
+          limit_name: "GPT-5.3-Codex-Spark",
+          metered_feature: "codex_bengalfox",
+          rate_limit: {
+            primary_window: {
+              used_percent: 0,
+              limit_window_seconds: 18_000,
+              reset_at: 1_789_551_317,
+            },
+            secondary_window: {
+              used_percent: 14,
+              limit_window_seconds: 604_800,
+              reset_at: 1_789_870_450,
+            },
+          },
+        },
+      ],
+    },
+    observedAt,
+  );
+
+  assert.equal(result.plan, "prolite");
+  assert.deepEqual(
+    result.windows.map(({ id, label, kind, usedPercent }) => ({
+      id,
+      label,
+      kind,
+      usedPercent,
+    })),
+    [
+      {
+        id: "seven_day",
+        label: "weekly",
+        kind: "weekly",
+        usedPercent: 99,
+      },
+      {
+        id: "model_codex_bengalfox_primary_five_hour",
+        label: "GPT-5.3-Codex-Spark 5-hour",
+        kind: "model",
+        usedPercent: 0,
+      },
+      {
+        id: "model_codex_bengalfox_secondary_seven_day",
+        label: "GPT-5.3-Codex-Spark weekly",
+        kind: "model",
+        usedPercent: 14,
+      },
+    ],
+  );
+});
+
 test("selects the active token from the current Copilot CLI config", () => {
   assert.equal(
     parseCurrentCopilotToken({
@@ -75,6 +139,54 @@ test("normalizes Copilot native monthly request totals", async () => {
   assert.equal(result.windows[0]?.usedPercent, 25);
   assert.equal(result.windows[1]?.unlimited, true);
   assert.equal(result.windows[1]?.resetsAt, undefined);
+});
+
+test("normalizes token-billed Copilot Business usage as AI credits", () => {
+  const result = normalizeCopilotUsage(
+    {
+      copilot_plan: "business",
+      token_based_billing: true,
+      quota_reset_date_utc: "2026-10-01T00:00:00.000Z",
+      quota_snapshots: {
+        chat: {
+          unlimited: true,
+          credits_used: 0,
+          entitlement: 0,
+          percent_remaining: 100,
+        },
+        completions: {
+          unlimited: true,
+          credits_used: 0,
+          entitlement: 0,
+          percent_remaining: 100,
+        },
+        premium_interactions: {
+          unlimited: true,
+          credits_used: 7562,
+          entitlement: 0,
+          percent_remaining: 100,
+          overage_permitted: true,
+        },
+      },
+    },
+    observedAt,
+    20_000,
+  );
+
+  assert.deepEqual(result.windows, [
+    {
+      id: "ai_credits",
+      label: "AI credits",
+      kind: "monthly",
+      usedPercent: 37.81,
+      used: 7562,
+      limit: 20_000,
+      remaining: 12_438,
+      unit: "AI credits",
+      resetsAt: "2026-10-01T00:00:00.000Z",
+      unlimited: false,
+    },
+  ]);
 });
 
 test("normalizes Kiro monthly credits and bonus separately", async () => {

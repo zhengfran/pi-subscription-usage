@@ -2,9 +2,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { asRecord, finiteNumber } from "./security.ts";
-import { PROVIDER_IDS, type ProviderId } from "./types.ts";
+import {
+  PROVIDER_IDS,
+  type ProviderId,
+  type UsageAdapterOptions,
+} from "./types.ts";
 
-export interface ProviderConfig {
+export interface ProviderConfig extends UsageAdapterOptions {
   enabled: boolean;
 }
 
@@ -31,6 +35,7 @@ const DEFAULT_CONFIG: UsageConfig = {
 
 const ROOT_KEYS = new Set(["refreshIntervalMinutes", "providers"]);
 const PROVIDER_KEYS = new Set(["enabled"]);
+const COPILOT_PROVIDER_KEYS = new Set(["enabled", "aiCreditsLimit"]);
 
 export function parseConfig(value: unknown): {
   config: UsageConfig;
@@ -71,8 +76,10 @@ export function parseConfig(value: unknown): {
           errors.push(`providers.${provider} must be a JSON object`);
           continue;
         }
+        const allowedKeys =
+          provider === "copilot" ? COPILOT_PROVIDER_KEYS : PROVIDER_KEYS;
         for (const entryKey of Object.keys(entry)) {
-          if (!PROVIDER_KEYS.has(entryKey)) {
+          if (!allowedKeys.has(entryKey)) {
             errors.push(
               `unknown configuration key: providers.${provider}.${entryKey}`,
             );
@@ -83,6 +90,16 @@ export function parseConfig(value: unknown): {
             errors.push(`providers.${provider}.enabled must be true or false`);
           } else {
             config.providers[provider].enabled = entry.enabled;
+          }
+        }
+        if (provider === "copilot" && "aiCreditsLimit" in entry) {
+          const limit = finiteNumber(entry.aiCreditsLimit);
+          if (limit === undefined || limit <= 0) {
+            errors.push(
+              "providers.copilot.aiCreditsLimit must be greater than zero",
+            );
+          } else {
+            config.providers.copilot.aiCreditsLimit = limit;
           }
         }
       }

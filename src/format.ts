@@ -111,6 +111,9 @@ export function doctorLines(doctor: DoctorReport): string[] {
   const lines = [
     `pi-subscription-usage ${doctor.packageVersion}`,
     `Config: ${doctor.configPath}`,
+    `Environment config: ${doctor.environmentPath}`,
+    `Environment: ${doctor.environment ?? "unconfigured (show all providers)"}`,
+    `Environment-hidden: ${doctor.hiddenProviders.join(", ") || "none"}`,
     `Cache: ${doctor.cachePath}`,
     `Offline: ${doctor.offline ? "yes" : "no"}`,
     "",

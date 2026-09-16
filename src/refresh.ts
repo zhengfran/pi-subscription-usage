@@ -5,7 +5,12 @@ import {
   waitForPeerRefresh,
   writeCache,
 } from "./cache.ts";
-import type { LoadedConfig, ProviderConfig, UsageConfig } from "./config.ts";
+import type {
+  LoadedConfig,
+  ProviderConfig,
+  UsageConfig,
+  UsageEnvironment,
+} from "./config.ts";
 import { AdapterFailure } from "./adapters/shared.ts";
 import type {
   AdapterDiagnostic,
@@ -122,6 +127,9 @@ async function runAdapter(
 export interface DoctorReport {
   packageVersion: string;
   configPath: string;
+  environmentPath: string;
+  environment?: UsageEnvironment;
+  hiddenProviders: ProviderId[];
   cachePath: string;
   offline: boolean;
   configErrors: string[];
@@ -133,8 +141,12 @@ export class UsageCoordinator {
   readonly config: UsageConfig;
   readonly configPath: string;
   readonly configErrors: string[];
+  readonly environment?: UsageEnvironment;
+  readonly environmentPath: string;
+  readonly hiddenProviders: ReadonlySet<ProviderId>;
   readonly offline: boolean;
 
+  private readonly runtime: Runtime;
   private readonly adapterById = new Map<ProviderId, UsageAdapter>();
   private reports = new Map<ProviderId, ProviderReport>();
   private snapshots: Partial<Record<ProviderId, UsageSnapshot>> = {};
@@ -144,13 +156,19 @@ export class UsageCoordinator {
 
   private constructor(
     loaded: LoadedConfig,
-    private readonly runtime: Runtime,
+    runtime: Runtime,
     adapterList: UsageAdapter[],
   ) {
     this.config = loaded.config;
     this.configPath = loaded.path;
     this.configErrors = loaded.errors;
+    this.environment = loaded.environment;
+    this.environmentPath = loaded.environmentPath;
+    this.hiddenProviders = new Set<ProviderId>(
+      loaded.environment === "personal" ? ["copilot", "kiro"] : [],
+    );
     this.offline = /^(1|true|yes)$/i.test(process.env.PI_OFFLINE ?? "");
+    this.runtime = runtime;
     for (const adapter of adapterList)
       this.adapterById.set(adapter.id, adapter);
   }
@@ -174,6 +192,15 @@ export class UsageCoordinator {
     this.snapshots = cache.snapshots;
     this.cacheError = cache.error;
     for (const adapter of this.adapterById.values()) {
+      if (this.hiddenProviders.has(adapter.id)) {
+        this.reports.set(adapter.id, {
+          provider: adapter.id,
+          label: adapter.label,
+          state: "disabled",
+          error: "hidden outside the corporate environment",
+        });
+        continue;
+      }
       if (!this.config.providers[adapter.id].enabled) {
         this.reports.set(adapter.id, {
           provider: adapter.id,
@@ -197,10 +224,16 @@ export class UsageCoordinator {
     }
   }
 
-  list(): ProviderReport[] {
+  private allReports(): ProviderReport[] {
     return [...this.adapterById.keys()]
       .map((id) => this.reports.get(id))
       .filter((report): report is ProviderReport => report !== undefined);
+  }
+
+  list(): ProviderReport[] {
+    return this.allReports().filter(
+      ({ provider }) => !this.hiddenProviders.has(provider),
+    );
   }
 
   get(provider: ProviderId): ProviderReport | undefined {
@@ -211,6 +244,7 @@ export class UsageCoordinator {
     if (this.offline) return false;
     if (Date.now() - this.lastAttemptAt < this.intervalMs()) return false;
     return [...this.adapterById.keys()].some((id) => {
+      if (this.hiddenProviders.has(id)) return false;
       if (!this.config.providers[id].enabled) return false;
       const snapshot = this.snapshots[id];
       return !snapshot || ageMs(snapshot) > this.intervalMs();
@@ -239,6 +273,14 @@ export class UsageCoordinator {
     try {
       const nextReports = await Promise.all(
         [...this.adapterById.values()].map(async (adapter) => {
+          if (this.hiddenProviders.has(adapter.id)) {
+            return {
+              provider: adapter.id,
+              label: adapter.label,
+              state: "disabled" as const,
+              error: "hidden outside the corporate environment",
+            };
+          }
           if (!this.config.providers[adapter.id].enabled) {
             return {
               provider: adapter.id,
@@ -304,11 +346,14 @@ export class UsageCoordinator {
     return {
       packageVersion: "0.1.0",
       configPath: this.configPath,
+      environmentPath: this.environmentPath,
+      environment: this.environment,
+      hiddenProviders: [...this.hiddenProviders],
       cachePath: cacheFile(),
       offline: this.offline,
       configErrors,
       diagnostics,
-      reports: this.list(),
+      reports: this.allReports(),
     };
   }
 }

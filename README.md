@@ -99,6 +99,23 @@ Configuration is optional. Defaults are zero-config. To override them, create `<
 
 `refreshIntervalMinutes` must be from 1 through 1440. `providers.copilot.aiCreditsLimit` must be greater than zero when set. It is an optional, user-confirmed monthly allowance—not a plan default or an estimate—and is used only when a token-billed Copilot response omits its included limit. Unknown keys and invalid values are reported in `/usage` and `/usage doctor`; safe defaults remain active.
 
+### Environment-based visibility
+
+The package reuses the machine-local `subagent-routing.json` environment policy when that file is present and valid:
+
+```json
+{
+  "version": 1,
+  "environment": "personal"
+}
+```
+
+- `corporate`: show and refresh all enabled providers.
+- `personal`: omit Copilot and Kiro from `/usage` and skip their network refreshes because those subscriptions are corporate-specific.
+- Missing or invalid environment config: preserve the standalone package behavior and show all enabled providers rather than hiding data unexpectedly.
+
+`/usage doctor` always lists every provider and reports Copilot/Kiro as environment-hidden in personal mode.
+
 ## Provider credential sources
 
 | Provider | Preferred source                                                                      | Fallback endpoint                              |

@@ -17,10 +17,14 @@ export interface UsageConfig {
   providers: Record<ProviderId, ProviderConfig>;
 }
 
+export type UsageEnvironment = "corporate" | "personal";
+
 export interface LoadedConfig {
   config: UsageConfig;
   path: string;
   errors: string[];
+  environment?: UsageEnvironment;
+  environmentPath: string;
 }
 
 const DEFAULT_CONFIG: UsageConfig = {
@@ -109,27 +113,74 @@ export function parseConfig(value: unknown): {
   return { config, errors };
 }
 
-export async function loadConfig(): Promise<LoadedConfig> {
-  const path = join(getAgentDir(), "subscription-usage.json");
+export function parseRoutingEnvironment(value: unknown): {
+  environment?: UsageEnvironment;
+  error?: string;
+} {
+  const root = asRecord(value);
+  if (
+    root?.version === 1 &&
+    (root.environment === "corporate" || root.environment === "personal")
+  ) {
+    return { environment: root.environment };
+  }
+  return {
+    error:
+      'subagent routing config must contain version 1 and environment "corporate" or "personal"',
+  };
+}
+
+async function loadPackageConfig(path: string): Promise<{
+  config: UsageConfig;
+  errors: string[];
+}> {
   try {
     const raw = await readFile(path, "utf8");
-    const parsed = parseConfig(JSON.parse(raw) as unknown);
-    return { ...parsed, path };
+    return parseConfig(JSON.parse(raw) as unknown);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { config: structuredClone(DEFAULT_CONFIG), path, errors: [] };
+      return { config: structuredClone(DEFAULT_CONFIG), errors: [] };
     }
     if (error instanceof SyntaxError) {
       return {
         config: structuredClone(DEFAULT_CONFIG),
-        path,
         errors: ["configuration file is not valid JSON"],
       };
     }
     return {
       config: structuredClone(DEFAULT_CONFIG),
-      path,
       errors: ["configuration file could not be read"],
     };
   }
+}
+
+async function loadRoutingEnvironment(path: string): Promise<{
+  environment?: UsageEnvironment;
+  error?: string;
+}> {
+  try {
+    return parseRoutingEnvironment(
+      JSON.parse(await readFile(path, "utf8")) as unknown,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    return { error: "subagent routing config could not be read" };
+  }
+}
+
+export async function loadConfig(): Promise<LoadedConfig> {
+  const agentDir = getAgentDir();
+  const path = join(agentDir, "subscription-usage.json");
+  const environmentPath = join(agentDir, "subagent-routing.json");
+  const [loaded, routing] = await Promise.all([
+    loadPackageConfig(path),
+    loadRoutingEnvironment(environmentPath),
+  ]);
+  return {
+    ...loaded,
+    path,
+    environmentPath,
+    ...(routing.environment ? { environment: routing.environment } : {}),
+    errors: [...loaded.errors, ...(routing.error ? [routing.error] : [])],
+  };
 }
